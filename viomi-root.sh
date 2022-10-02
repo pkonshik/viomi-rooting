@@ -7,13 +7,13 @@ function main() {
   }
 
   echo -n >>"$HOME/.ssh/config" || {
-    echo "Cannot edit ~/.ssh/config."
+    echo "Cannot edit $HOME/.ssh/config."
     exit
   }
 
-  while [ ! -e "$HOME/.ssh/id_rsa" ]; do
+  while [ ! -e "$HOME/.ssh/vacuum_rsa" ]; do
     echo "You don't seem to have an ssh key, generating one."
-    ssh-keygen -f "$HOME/.ssh/id_rsa" || exit
+    ssh-keygen -f "$HOME/.ssh/vacuum_rsa" || exit
   done
 
   for tool in adb awk sha256sum ssh wget; do
@@ -49,7 +49,7 @@ EOF
   fi
 
   if [ -z "$NEW_V8" ]; then
-    if ssh vacuum "test -f /etc/rc.d/S90robotManager"; then
+    if ssh -i "$HOME"/.ssh/vacuum_rsa vacuum "test -f /etc/rc.d/S90robotManager"; then
       echo "Robot service already restored, skipping"
     else
       echo "Restoring robot services."
@@ -168,13 +168,13 @@ function install_dropbear() {
 
   adb push $filename /tmp
   adb shell opkg install /tmp/$filename
-  adb push "$HOME"/.ssh/id_rsa.pub /etc/dropbear/authorized_keys
+  adb push "$HOME"/.ssh/vacuum_rsa.pub /etc/dropbear/authorized_keys
   adb shell chmod 0600 /etc/dropbear/authorized_keys
   #adb shell "sed -i \"/PasswordAuth/ s/'on'/'off'/\" /etc/config/dropbear"
   adb shell /etc/init.d/dropbear start
 
   echo "Setting local ssh alias vacuum to root@$ip."
-  echo "You can use 'ssh vacuum' to connect to the robot from now on."
+  echo "You can use 'ssh -i $HOME/.ssh/vacuum_rsa vacuum' to connect to the robot from now on."
 
   cat >>"$HOME/.ssh/config" <<EOF
 Host vacuum
@@ -190,20 +190,23 @@ EOF
   # shellcheck disable=SC2016
   echo 'Please change the root password now. The default one is typically "@3I#sc$RD%xm^2S&".'
   # TODO find a way to check if the password was already changed, maybe by checking root entry in cat /etc/shadow
-  ssh vacuum "passwd"
+  adb shell chmod 0600 /etc/passwd
+  adb shell chmod 0600 /etc/shadow
+  adb shell rm -f /etc/passwd+ /etc/shadow+
+  adb shell passwd
 }
 
 function restore_robot_services() {
-  ssh vacuum "cd /etc/rc.d; ln -s /etc/init.d/robotManager S90robotManager"
+  ssh -i "$HOME"/.ssh/vacuum_rsa vacuum "cd /etc/rc.d; ln -s /etc/init.d/robotManager S90robotManager"
   echo "Your device is now rooted."
   # And to celebrate:
-  ssh vacuum "tinyplayer /usr/share/audio/english/sound_test_ready.mp3"
+  ssh -i "$HOME"/.ssh/vacuum_rsa vacuum "tinyplayer /usr/share/audio/english/sound_test_ready.mp3"
 }
 
 function date_reset_workaround() {
   # Some process seems to reset datetime after boot. Workaround per:
   # https://github.com/rumpeltux/viomi-rooting/issues/41
-  ssh vacuum "cat > /usr/sbin/date; chmod +x /usr/sbin/date" <<"EOF"
+  ssh -i "$HOME"/.ssh/vacuum_rsa vacuum "cat > /usr/sbin/date; chmod +x /usr/sbin/date" <<"EOF"
 /bin/date -u -s "$2"
 sleep 2
 /bin/date -u -s "$2"
@@ -218,8 +221,9 @@ function install_valetudo() {
   echo "389d6d73ec2cbb7064044d2857ae17b64d12f9baeb81723b6904f11b1dcd3f92  valetudo" >valetudo.sha256
   sha256sum -c valetudo.sha256 || exit
 
-  scp valetudo vacuum:/mnt/UDISK/
-  ssh vacuum "cat >/etc/init.d/valetudo" <<EOF
+  tar -cf - valetudo | ssh -i "$HOME"/.ssh/vacuum_rsa vacuum tar -C /mnt/UDISK -xvf -
+  #scp valetudo vacuum:/mnt/UDISK/
+  ssh -i "$HOME"/.ssh/vacuum_rsa vacuum "cat >/etc/init.d/valetudo" <<EOF
 #!/bin/sh /etc/rc.common
 START=97
 STOP=99
@@ -243,7 +247,7 @@ shutdown() {
 }
 EOF
 
-  ssh vacuum <<\EOF
+  ssh -i "$HOME"/.ssh/vacuum_rsa vacuum <<\EOF
 sed -i 's/110.43.0.8./127.00.00.1/g' /usr/bin/miio_client
 for domain in "" de. ea. in. pv. ru. sg. st. tw. us.; do
   echo "127.0.0.1 ${domain}ot.io.mi.com ${domain}ott.io.mi.com" >> /etc/hosts
