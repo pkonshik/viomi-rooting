@@ -206,13 +206,9 @@ function restore_robot_services() {
 function date_reset_workaround() {
   # Some process seems to reset datetime after boot. Workaround per:
   # https://github.com/rumpeltux/viomi-rooting/issues/41
-  ssh -i "$HOME"/.ssh/vacuum_rsa vacuum "cat > /usr/sbin/date; chmod +x /usr/sbin/date" <<"EOF"
-/bin/date -u -s "$2"
-sleep 2
-/bin/date -u -s "$2"
-sleep 2
-/bin/date -u -s "$2"
-EOF
+
+  ssh "$HOME"/.ssh/vacuum_rsa vacuum "uci set system.@system[0].timezone=UTC"
+  ssh "$HOME"/.ssh/vacuum_rsa vacuum "uci commit"
 }
 
 function install_valetudo() {
